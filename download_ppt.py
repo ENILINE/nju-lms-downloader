@@ -100,26 +100,33 @@ print(f"\n共 {len(all_activities)} 个活动，开始下载...\n")
 success, skip, fail = 0, 0, 0
 for act in all_activities:
     title = act.get("title", act.get("name", f"activity_{act.get('id')}"))
+    # 新版 LMS 将附件直接放在 uploads 中；旧版则通过
+    # cc_license_references[].upload_id 引用附件。两种格式都兼容。
+    uploads = act.get("uploads", [])
     refs = act.get("cc_license_references", [])
 
-    if not refs:
+    if not uploads and not refs:
         # 尝试从活动详情获取
         act_detail = session.get(f"{BASE}/api/activities/{act['id']}", timeout=10)
         if act_detail.status_code == 200:
-            refs = act_detail.json().get("cc_license_references", [])
+            detail = act_detail.json()
+            uploads = detail.get("uploads", [])
+            refs = detail.get("cc_license_references", [])
 
-    if not refs:
+    attachments = uploads or refs
+    if not attachments:
         print(f"  [跳过] {title}（无附件）")
         skip += 1
         continue
 
-    for ref in refs:
-        upload_id = ref.get("upload_id")
+    for attachment in attachments:
+        # uploads 中是 id，cc_license_references 中是 upload_id
+        upload_id = attachment.get("id") or attachment.get("upload_id")
         if not upload_id:
             continue
 
         # 获取文件名
-        filename = get_upload_name(upload_id)
+        filename = attachment.get("name") or get_upload_name(upload_id)
         # 清理文件名非法字符
         filename = re.sub(r'[\\/:*?"<>|]', '_', filename)
 
